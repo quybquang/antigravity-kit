@@ -19,6 +19,20 @@ This skill teaches **decision-making principles**, not fixed code to copy.
 - Choose pattern based on PROJECT CONTEXT (scale, team, lifetime)
 - Standard Library first—add dependencies only when justified
 
+### 📁 Deep-Dive References
+
+Load these **only when the specific topic is relevant** to the user's request:
+
+| Reference | When to Load |
+|-----------|------|
+| `references/concurrency.md` | Goroutines, channels, errgroup, context patterns |
+| `references/frameworks.md` | Framework selection (net/http vs Chi vs Gin vs Fiber) |
+| `references/database.md` | ORM/driver selection, sqlc, migrations, connection pooling |
+| `references/testing.md` | Table-driven tests, benchmarks, fuzz, mocking |
+| `references/performance.md` | pprof, escape analysis, memory layout, GC tuning |
+| `references/clean-architecture.md` | Layered architecture, DI, domain-driven structure |
+| `references/api-design.md` | HTTP handlers, JSON, middleware, graceful shutdown |
+
 ---
 
 ## 1. Go Philosophy (Non-Negotiable)
@@ -113,53 +127,7 @@ How big is the project?
 
 ---
 
-## 3. Concurrency Patterns
-
-### When to Use What
-
-| Pattern | Use When |
-|---------|----------|
-| `goroutine + channel` | Fan-out/fan-in, pipelines |
-| `sync.WaitGroup` | Wait for N goroutines to complete |
-| `errgroup.Group` | Wait + collect first error + cancel others |
-| `sync.Mutex/RWMutex` | Protect shared state |
-| `sync.Once` | One-time initialization |
-| `context.Context` | Cancellation, timeout, request-scoped values |
-
-### The Golden Rules
-
-```
-Concurrency rules:
-├── Always pass context.Context as first parameter
-├── Never start a goroutine without knowing how it will stop
-├── Use errgroup for concurrent operations that can fail
-├── Prefer channels for communication, mutexes for state
-├── Don't communicate by sharing memory—share memory by communicating
-├── Always handle context cancellation
-└── Use sync.Pool for frequently allocated objects (measure first!)
-
-Context propagation:
-├── Accept ctx in every function that does I/O
-├── Pass ctx to downstream calls
-├── Check ctx.Err() in long loops
-├── Use context.WithTimeout for external calls
-└── NEVER store context in a struct
-```
-
-### Goroutine Lifecycle
-
-```
-ALWAYS ensure goroutine cleanup:
-├── Use context for cancellation
-├── Use done channels for signaling
-├── Defer cleanup in goroutines
-├── Prevent goroutine leaks
-└── Log goroutine lifecycle in debug mode
-```
-
----
-
-## 4. Error Handling
+## 3. Error Handling
 
 ### Idiomatic Error Handling
 
@@ -207,7 +175,7 @@ When sentinel errors are enough:
 
 ---
 
-## 5. Interface Design
+## 4. Interface Design
 
 ### Core Principles
 
@@ -228,310 +196,9 @@ Interface location:
     repository/ returns *PostgresRepo struct
 ```
 
-### Common Patterns
-
-```
-Repository interface (defined in service package):
-├── type UserRepository interface {
-│       GetByID(ctx context.Context, id int64) (*User, error)
-│       Create(ctx context.Context, user *User) error
-│   }
-│
-Service depends on interface:
-├── type UserService struct {
-│       repo UserRepository  // interface, not concrete
-│   }
-│
-Testing becomes trivial:
-└── Pass a mock/stub that satisfies the interface
-```
-
 ---
 
-## 6. Framework Selection (2025)
-
-### Decision Tree
-
-```
-What are you building?
-│
-├── API with simple routing (Go 1.22+)
-│   └── net/http (ServeMux now supports patterns!)
-│
-├── REST API with middleware needs
-│   └── Chi (lightweight, net/http compatible)
-│
-├── High-performance API / Microservice
-│   └── Gin or Echo (battle-tested, fast)
-│
-├── Maximum performance (benchmarks matter)
-│   └── Fiber (fasthttp-based, Express-like API)
-│
-├── gRPC service
-│   └── google.golang.org/grpc + protobuf
-│
-└── CLI tool
-    └── cobra + viper
-```
-
-### Comparison Principles
-
-| Factor | net/http | Chi | Gin | Fiber |
-|--------|----------|-----|-----|-------|
-| **Best for** | Simple APIs, Go 1.22+ | Composable middleware | Production REST APIs | Max throughput |
-| **Dependencies** | Zero | Minimal | Moderate | fasthttp (non-std) |
-| **net/http compatible** | ✅ | ✅ | ❌ (own context) | ❌ (fasthttp) |
-| **Middleware ecosystem** | Manual | Rich, composable | Rich, built-in | Growing |
-| **Learning curve** | Low | Low | Low | Low |
-
-### Selection Questions to Ask:
-1. Does the project need to stay net/http compatible?
-2. Is raw throughput critical (>100K req/s)?
-3. Does the team already know a specific framework?
-4. How important is the middleware ecosystem?
-
-> **Default recommendation for new projects**: `net/http` (Go 1.22+) or `Chi` for composability. Only reach for Gin/Fiber when justified.
-
----
-
-## 7. Database Patterns
-
-### ORM/Driver Selection
-
-| Tool | Best For |
-|------|----------|
-| `database/sql` + raw SQL | Full control, simple queries |
-| `sqlc` | Type-safe SQL → Go code generation |
-| `pgx` | PostgreSQL-specific features, performance |
-| `GORM` | Rapid prototyping, complex relations |
-| `Bun` | Modern ORM, good performance |
-| `ent` | Graph-based schema, code generation |
-
-### Database Principles
-
-```
-├── Use connection pooling (sql.DB handles this)
-├── Always use context-aware queries (QueryContext, ExecContext)
-├── Use prepared statements for repeated queries
-├── Close rows immediately: defer rows.Close()
-├── Scan into structs, not individual variables
-├── Use transactions for multi-step operations
-├── Set reasonable timeouts via context
-└── Monitor connection pool metrics
-
-sqlc recommendation (for most projects):
-├── Write SQL → Generate type-safe Go code
-├── No runtime reflection
-├── Catches SQL errors at compile time
-├── Works with PostgreSQL, MySQL, SQLite
-└── Pairs perfectly with pgx driver
-```
-
-### Migration Strategy
-
-```
-├── golang-migrate/migrate  → SQL-based, simple
-├── goose                   → SQL or Go-based
-├── atlas                   → Declarative, modern
-│
-├── ALWAYS use versioned migrations
-├── NEVER modify existing migration files
-├── Test migrations up AND down
-└── Run migrations separately from app startup
-```
-
----
-
-## 8. Testing
-
-### Table-Driven Tests (Idiomatic Go)
-
-```
-Pattern:
-├── Define test cases as slice of structs
-├── Loop through cases with t.Run(name, func)
-├── Each case: input → expected output
-├── Name each case descriptively
-├── Add edge cases and error cases
-└── Use t.Parallel() when tests are independent
-
-Benefits:
-├── Easy to add new cases
-├── Clear what's being tested
-├── Consistent structure across codebase
-└── Great for debugging (run single case)
-```
-
-### Testing Strategy
-
-| Type | Purpose | Tools |
-|------|---------|-------|
-| **Unit** | Business logic, pure functions | `testing` (stdlib) |
-| **Integration** | Database, external services | `testcontainers-go` |
-| **Benchmark** | Performance measurement | `testing.B` |
-| **Fuzz** | Input discovery (Go 1.18+) | `testing.F` |
-| **E2E** | Full API workflows | `net/http/httptest` |
-
-### Testing Principles
-
-```
-├── Use stdlib testing package first
-├── testify is OK for assertions (require/assert)
-├── Use httptest.NewServer for HTTP tests
-├── Use t.TempDir() for file-based tests
-├── Use testcontainers for real database tests
-├── Mock at interface boundaries only
-├── Benchmark before optimizing: go test -bench=.
-├── Fuzz test parsers and validators: go test -fuzz=.
-└── Use t.Helper() in test helper functions
-```
-
----
-
-## 9. Performance
-
-### Profiling First (Measure, Don't Guess)
-
-```
-Tools:
-├── go tool pprof      → CPU, memory, goroutine profiling
-├── go test -bench     → Micro-benchmarks
-├── go test -benchmem  → Memory allocation counts
-├── runtime/trace      → Execution tracer
-├── expvar / metrics   → Runtime metrics endpoint
-└── go build -gcflags="-m" → Escape analysis
-
-Common optimizations (ONLY after profiling):
-├── Reduce allocations (sync.Pool, pre-allocate slices)
-├── Use strings.Builder for string concatenation
-├── Avoid interface{}/any in hot paths
-├── Use struct embedding to reduce pointer chasing
-├── Pre-size maps and slices: make([]T, 0, expectedCap)
-├── Use io.Reader/Writer for streaming (avoid loading all into memory)
-└── Consider msgpack/protobuf over JSON for internal services
-```
-
-### Memory Layout
-
-```
-Struct field ordering matters:
-├── Group same-size fields together
-├── Larger fields first, smaller fields last
-├── Reduces padding, saves memory
-├── Use fieldalignment linter to detect issues
-└── ONLY matters at scale (millions of structs)
-```
-
----
-
-## 10. Clean Architecture in Go
-
-### Layer Separation
-
-```
-Request Flow:
-│
-├── Handler (Transport Layer)
-│   ├── HTTP/gRPC specifics
-│   ├── Parse request, validate input
-│   ├── Call service method
-│   └── Format response
-│
-├── Service (Business Logic Layer)
-│   ├── Pure business rules
-│   ├── Depends on repository INTERFACES
-│   ├── No HTTP, no SQL
-│   └── Testable in isolation
-│
-├── Repository (Data Access Layer)
-│   ├── Database queries
-│   ├── Implements repository interface
-│   ├── No business logic
-│   └── Returns domain models
-│
-└── Model (Domain Layer)
-    ├── Structs representing business entities
-    ├── No dependencies on other layers
-    └── Validation methods optional
-```
-
-### Dependency Injection
-
-```
-DI in Go (no magic, no framework needed):
-├── Constructor injection via New* functions
-│   func NewUserService(repo UserRepository) *UserService
-│
-├── Wire up in cmd/main.go:
-│   db := database.Connect(cfg)
-│   userRepo := postgres.NewUserRepository(db)
-│   userService := service.NewUserService(userRepo)
-│   userHandler := handler.NewUserHandler(userService)
-│
-├── For large projects, consider google/wire
-│   (compile-time DI code generation)
-│
-└── AVOID runtime DI containers (not idiomatic Go)
-```
-
-### When Clean Architecture is Overkill
-
-```
-Skip full layering when:
-├── Simple CRUD with < 5 entities
-├── CLI tools or scripts
-├── Prototypes / POCs
-└── Single-person, short-lived projects
-
-Use full layering when:
-├── Multiple developers
-├── Complex business rules
-├── Long-lived project (> 1 year)
-├── Need to swap infrastructure
-└── Extensive testing required
-```
-
----
-
-## 11. API Design Principles
-
-### HTTP Handler Patterns
-
-```
-Go 1.22+ ServeMux patterns:
-├── mux.HandleFunc("GET /users/{id}", handler.GetUser)
-├── mux.HandleFunc("POST /users", handler.CreateUser)
-├── Method + path in one string
-└── Path parameters via r.PathValue("id")
-
-Middleware chain:
-├── func Middleware(next http.Handler) http.Handler
-├── Compose: Logger(Auth(RateLimit(handler)))
-├── Use for: logging, auth, CORS, recovery, metrics
-└── Keep middleware focused (single responsibility)
-```
-
-### JSON Handling
-
-```
-Encoding/Decoding:
-├── Use json.NewDecoder(r.Body) for requests (streaming)
-├── Use json.NewEncoder(w) for responses
-├── Define struct tags: `json:"field_name,omitempty"`
-├── Use json.RawMessage for deferred parsing
-├── Limit request body size: http.MaxBytesReader
-└── Set Content-Type header: "application/json"
-
-Validation:
-├── Validate after decoding, not during
-├── Use struct tags + validator package for complex rules
-├── Return 422 for validation errors with field-level details
-└── Sanitize output (never expose internal struct fields)
-```
-
----
-
-## 12. Logging & Observability
+## 5. Logging & Observability
 
 ### Structured Logging (Go 1.21+)
 
@@ -554,9 +221,7 @@ Logging levels:
 
 ---
 
-## 13. Go Modules & Dependencies
-
-### Module Management
+## 6. Go Modules & Dependencies
 
 ```
 ├── go mod init → Start new module
@@ -583,7 +248,7 @@ Logging levels:
 
 ---
 
-## 14. Anti-Patterns to Avoid
+## 7. Anti-Patterns to Avoid
 
 ### ❌ DON'T:
 - Use `init()` for complex initialization (hard to test, surprising)
@@ -611,7 +276,7 @@ Logging levels:
 
 ---
 
-## 15. Decision Checklist
+## 8. Decision Checklist
 
 Before implementing:
 
